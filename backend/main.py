@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 import time
 
 app = FastAPI(title="PhishGuard API", version="0.1.0")
