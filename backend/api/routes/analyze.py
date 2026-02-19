@@ -2,11 +2,62 @@ from fastapi import APIRouter
 import time
 from schemas.payload import AnalyzeRequest
 from services.crawler import fetch_page_info
-from services.gemini import generate_security_report # ⭐️ 추가됨!
+from services.gemini import generate_security_report
 
 router = APIRouter()
 
-# ... (기존에 있던 def stub_analyze 부분은 그대로 둡니다) ...
+def stub_analyze(url: str) -> dict:
+    """
+    초보자용 더미 분석기 (나중에 ML 추론 로직으로 교체될 예정)
+    """
+    url_lower = url.lower()
+    hits = []
+    checks = []
+
+    https_ok = url_lower.startswith("https://")
+    checks.append({"key": "https", "name": "HTTPS 사용", "pass": https_ok})
+
+    risk_score = 10
+    label = "NORMAL"
+    one_line = "특이 패턴이 없습니다. 그래도 개인정보 입력은 주의하세요."
+
+    if any(k in url_lower for k in ["login", "verify", "account", "password"]):
+        hits.append("keyword_login")
+        checks.append({"key": "keyword_risk", "name": "로그인/인증 유도 키워드", "pass": False})
+        risk_score = 80
+        label = "PHISHING"
+        one_line = "로그인/인증 유도 패턴이 보입니다. 접속 및 입력을 중단하세요."
+
+    if any(k in url_lower for k in ["bet", "casino", "slot", "toto"]):
+        hits.append("keyword_gambling")
+        checks.append({"key": "keyword_gambling", "name": "도박 관련 키워드", "pass": False})
+        risk_score = max(risk_score, 75)
+        label = "GAMBLING"
+        one_line = "도박 관련 키워드가 포함되어 있습니다. 접속을 피하세요."
+
+    if any(k in url_lower for k in ["download", ".apk", ".exe"]):
+        hits.append("keyword_download")
+        checks.append({"key": "download_hint", "name": "다운로드 유도", "pass": False})
+        risk_score = max(risk_score, 85)
+        label = "MALWARE"
+        one_line = "다운로드 유도 정황이 있습니다. 악성코드 가능성이 있어 차단을 권장합니다."
+
+    if not hits:
+        checks.append({"key": "keyword_risk", "name": "위험 키워드 포함", "pass": True})
+
+    return {
+        "label": label,
+        "risk_score": risk_score,
+        "one_line": one_line,
+        "screenshot": {"type": "none", "value": ""},
+        "checks": checks,
+        "evidence": {
+            "model": {"name": "stub", "version": "stub-v0", "score": 0.0},
+            "rules": {"version": "stub-v0", "hits": hits},
+        },
+        "latency_ms": 0,
+    }
+
 
 @router.post("/")
 async def analyze_url(req: AnalyzeRequest):
@@ -30,13 +81,14 @@ async def analyze_url(req: AnalyzeRequest):
         result["screenshot"] = {"type": "base64", "value": page_data["screenshot_base64"]}
         site_text_for_ai = page_data["text"]
 
-    # 4. ⭐️ Gemini API 호출하여 리포트 생성 (새로 추가된 부분!)
+    # 4. Gemini API 호출하여 리포트 생성
     print("🤖 Gemini AI 리포트 생성 중...")
     gemini_report = await generate_security_report(
         url=req.url, 
         risk_score=result["risk_score"], 
         site_text=site_text_for_ai
     )
+    
     # 최종 결과에 AI 리포트 항목 추가
     result["gemini_report"] = gemini_report
     
