@@ -1,9 +1,54 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import time
+import torch
 
-app = FastAPI(title="PhishGuard API", version="0.1.0")
+# 전역 변수로 AI 모델을 담아둘 딕셔너리 (서버 실행 내내 유지됨)
+ml_models = {}
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    서버가 켜질 때(Startup) 실행되는 구간
+    """
+    print("🚀 서버 시작 중... AI 모델 로드 준비")
+    
+    # 1. 맥북 GPU(MPS) 확인 및 디바이스 설정
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    print(f"🖥️  Using device: {device}")
+    
+    # 2. 파인튜닝한 모델과 가중치(weights) 불러오기 (지금은 주석 처리된 예시)
+    # 추후 학습이 완료된 .pth 파일 등을 여기서 불러와서 device에 올리고 추론(eval) 모드로 세팅합니다.
+    # model = MyBertModel()
+    # model.load_state_dict(torch.load("model_weights.pth"))
+    # model.to(device) 
+    # model.eval()     
+    
+    # 3. 모델을 전역 딕셔너리에 저장
+    # ml_models["phish_checker"] = model
+    
+    yield # 이 시점부터 서버가 정상적으로 클라이언트의 API 요청을 받기 시작함
+    
+    """
+    서버가 꺼질 때(Shutdown) 실행되는 구간
+    """
+    print("🛑 서버 종료 중... 메모리 정리")
+    ml_models.clear()
+
+
+# lifespan을 FastAPI 앱에 연결
+app = FastAPI(title="PhishGuard API", version="0.1.0", lifespan=lifespan)
+
+# CORS 설정 추가 (모든 출처 허용 - 개발 단계에서 편리함)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 실제 배포 시에는 프론트엔드 도메인만 넣는 것이 좋습니다.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class AnalyzeRequest(BaseModel):
     url: str  # HttpUrl로 엄격하게 하고 싶으면 HttpUrl로 바꿔도 됩니다.
@@ -75,8 +120,9 @@ def health():
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
     start = time.time()
+    
+    # TODO: 추후 ml_models["phish_checker"]를 활용하여 실제 AI 추론 로직으로 교체
     result = stub_analyze(req.url)
+    
     result["latency_ms"] = int((time.time() - start) * 1000)
     return result
-
-
