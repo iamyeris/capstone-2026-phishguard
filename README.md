@@ -51,15 +51,16 @@ python -m pip install -U pip
 python -m pip install -r backend/requirements.txt 
 ```
 ### 3) 브라우저 설치 (최초 1회)
+```bash
 playwright install chromium
+```
 
 ### 4) 환경 변수(.env) 설정
 루트 폴더 또는 `backend` 폴더 안에 `.env` 파일을 생성하고, 아래와 같이 API 키를 입력(하드코딩 절대 금지!)
 *(현재는 UI 더미 테스트가 가능하도록 예외 처리가 되어 있어, 키가 당장 없어도 서버 구동 및 테스트는 가능합니다.)*
 
-\`\`\`env
+```env
 GEMINI_API_KEY=디스코드_채팅방에_올려뒀어요_복붙해주세용
-\`\`\`
 ```
 
 ### 5) 서버 실행 
