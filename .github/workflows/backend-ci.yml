@@ -22,8 +22,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install -U pip
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-dev.txt
+          python -m pip install -r backend/requirements.txt
+          python -m pip install -r backend/requirements-dev.txt
+          # ⭐️ 핵심 1: Playwright 브라우저 강제 설치 (테스트 시 브라우저 없어서 뻗는 것 방지)
           playwright install chromium --with-deps
 
       - name: Lint (ruff)
@@ -31,8 +32,10 @@ jobs:
           ruff check backend
 
       - name: Test (pytest)
+        # ⭐️ 핵심 2: 테스트를 최상단이 아닌 backend 폴더 안으로 이동해서 실행!
         working-directory: ./backend
         env:
-          PYTHONPATH: . 
+          PYTHONPATH: .
         run: |
           python -m pytest -q
+          
