@@ -24,11 +24,16 @@ jobs:
           python -m pip install -U pip
           python -m pip install -r backend/requirements.txt
           python -m pip install -r backend/requirements-dev.txt
+          playwright install chromium --with-deps
 
       - name: Lint (ruff)
         run: |
-          ruff check backend
+          ruff check backendㄴ
 
       - name: Test (pytest)
+        working-directory: ./backend
+        env:
+          PYTHONPATH: . 
         run: |
           python -m pytest -q
+          
