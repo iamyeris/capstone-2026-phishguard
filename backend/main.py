@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import torch
 
-# 방금 만든 라우터 불러오기
+# 라우터 불러오기
 from api.routes import analyze
 
 ml_models = {}
@@ -27,7 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 라우터 등록! /analyze 로 들어오는 모든 요청을 analyze.py 로 넘김
+# 라우터 등록
 app.include_router(analyze.router, prefix="/analyze", tags=["Analyze"])
 
 @app.get("/health")
