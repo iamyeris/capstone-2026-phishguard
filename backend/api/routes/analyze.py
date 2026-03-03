@@ -3,13 +3,12 @@ import time
 from schemas.payload import AnalyzeRequest
 from services.crawler import fetch_page_info
 from services.gemini import generate_security_report
+from services.inference import analyze_text_with_ai # ⭐️ PyTorch 뼈대 불러오기 추가!
 
 router = APIRouter()
 
 def stub_analyze(url: str) -> dict:
-    """
-    초보자용 더미 분석기 (나중에 ML 추론 로직으로 교체될 예정)
-    """
+    # (기존 팀장님이 짠 완벽한 URL 규칙 기반 더미 분석기 로직 그대로!)
     url_lower = url.lower()
     hits = []
     checks = []
@@ -67,7 +66,7 @@ async def analyze_url(req: AnalyzeRequest):
     # 1. 크롤러로 사이트 접속 (텍스트 & 스크린샷 획득)
     page_data = await fetch_page_info(req.url)
     
-    # 2. 1차 분석 (현재는 stub 룰 기반, 추후 PyTorch 교체)
+    # 2. 1차 분석 (URL 규칙 기반 - Stub)
     result = stub_analyze(req.url)
     
     # 3. 크롤링 결과 반영
@@ -81,12 +80,38 @@ async def analyze_url(req: AnalyzeRequest):
         result["screenshot"] = {"type": "base64", "value": page_data["screenshot_base64"]}
         site_text_for_ai = page_data["text"]
 
+    # ------------------------------------------------------------------
+    # ⭐️ 3-1. 하이브리드 결합: PyTorch 모델로 텍스트 분석 (새로 추가된 부분!)
+    # ------------------------------------------------------------------
+    if not page_data["error"]:
+        print("🧠 PyTorch AI 모델 텍스트 추론 중...")
+        ai_result = analyze_text_with_ai(site_text_for_ai)
+        
+        # URL 규칙 분석 점수와 텍스트 기반 AI 분석 점수 중 더 '위험한' 점수를 채택 (보수적 접근)
+        if ai_result["risk_score"] > result["risk_score"]:
+            result["risk_score"] = ai_result["risk_score"]
+            result["label"] = ai_result["label"]
+            result["one_line"] = "AI 텍스트 분석 결과, 위험 요소가 감지되었습니다. 주의하세요!"
+        
+        # 증거(evidence)에 AI 모델 결과도 남겨두기
+        result["evidence"]["model"] = {
+            "name": "PhishGuard-BERT", 
+            "version": "v0.1-mock", 
+            "score": ai_result["risk_score"]
+        }
+    # ------------------------------------------------------------------
+
     # 4. Gemini API 호출하여 리포트 생성
     print("🤖 Gemini AI 리포트 생성 중...")
+    
+    # Base64 데이터가 있으면 꺼내오고, 접속 실패로 없으면 빈 문자열("") 전달
+    img_data = result["screenshot"]["value"] if result["screenshot"]["type"] == "base64" else ""
+    
     gemini_report = await generate_security_report(
         url=req.url, 
         risk_score=result["risk_score"], 
-        site_text=site_text_for_ai
+        site_text=site_text_for_ai,
+        screenshot_base64=img_data
     )
     
     # 최종 결과에 AI 리포트 항목 추가

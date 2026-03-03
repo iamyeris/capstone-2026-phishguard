@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  api:
+    build: .
+    container_name: phishguard_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env  # 👈 로컬에 있는 .env 파일의 API 키를 도커 안으로 쏙 넣어줍니다.
+    volumes:
+      - .:/app  # 👈 로컬 코드를 컨테이너에 연결해서, 코드를 수정하면 도커를 안 꺼도 바로 반영됩니다 (핫 리로드)
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    
