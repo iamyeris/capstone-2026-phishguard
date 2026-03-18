@@ -3,7 +3,7 @@ import time
 from schemas.payload import AnalyzeRequest
 from services.crawler import fetch_page_info
 from services.gemini import generate_security_report
-from services.inference import analyze_text_with_ai # ⭐️ PyTorch 뼈대 불러오기 추가!
+from services.interface import analyze_text_with_ai # ⭐️ PyTorch 뼈대 불러오기 추가!
 
 router = APIRouter()
 

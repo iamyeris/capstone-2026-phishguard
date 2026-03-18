@@ -7,3 +7,4 @@ transformers
 playwright
 google-generativeai
 python-dotenv
+SQLAlchemy
