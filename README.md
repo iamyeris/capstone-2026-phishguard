@@ -40,7 +40,7 @@ backend/
 
 ### 1) 가상환경 생성/활성화
 ```bash
-cd capstone-2026-phishguard
+cd capstone-2026-phishguard/backend
 python3 -m venv .venv
 source .venv/bin/activate
 ```
