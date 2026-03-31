@@ -1,15 +1,16 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, HTTPException
 import time
 import asyncio
 
 from schemas.payload import AnalyzeRequest
 from services.crawler import fetch_page_info
 from services.gemini import generate_security_report
-from services.interface import analyze_text_with_ai 
+# 기존 개별 함수 호출 대신 인터페이스 구조를 활용하기 위해 import 수정 가능
 
 router = APIRouter()
 
 def stub_analyze(url: str) -> dict:
+    """기본 규칙 기반 1차 스크리닝 (Stub 로직)"""
     url_lower = url.lower()
     hits = []
     checks = []
@@ -21,6 +22,7 @@ def stub_analyze(url: str) -> dict:
     label = "NORMAL"
     one_line = "특이 패턴이 없습니다. 그래도 개인정보 입력은 주의하세요."
 
+    # 키워드 기반 단순 필터링
     if any(k in url_lower for k in ["login", "verify", "account", "password"]):
         hits.append("keyword_login")
         checks.append({"key": "keyword_risk", "name": "로그인/인증 유도 키워드", "pass": False})
@@ -59,14 +61,18 @@ def stub_analyze(url: str) -> dict:
     }
 
 @router.post("/")
-async def analyze_url(req: AnalyzeRequest):
+async def analyze_url(req: AnalyzeRequest, request: Request):
+    """
+    URL 분석 통합 엔드포인트
+    - request: FastAPI Request 객체를 통해 app.state에 접근합니다.
+    """
     start = time.time()
     print(f"🔍 [STEP 1] 분석 시작: {req.url}")
     
     # ------------------------------------------------------------------
     # ⚡️ [스마트 라우팅 1] 검증된 공식 도메인 즉시 통과
     # ------------------------------------------------------------------
-    safe_domains = ["naver.com", "google.com", "daum.net", "github.com"]
+    safe_domains = ["naver.com", "google.com", "daum.net", "github.com", "apple.com"]
     if any(domain in req.url.lower() for domain in safe_domains):
         return {
             "label": "NORMAL",
@@ -79,13 +85,18 @@ async def analyze_url(req: AnalyzeRequest):
             "latency_ms": int((time.time() - start) * 1000)
         }
 
-    # 1. 병렬 실행 (크롤링 시작)
+    # ------------------------------------------------------------------
+    # ⚙️ [준비] main.py에서 로드한 AI 분석기 가져오기
+    # ------------------------------------------------------------------
+    ai_analyzer = request.app.state.ai_analyzer
+
+    # 1. 병렬 실행 시작 (크롤링 task 생성)
     crawl_task = asyncio.create_task(fetch_page_info(req.url))
     
-    # 2. 크롤링 도는 동안 1차 분석 완료하기
+    # 2. 크롤링이 도는 동안 CPU를 사용하는 1차 규칙 분석(Stub) 수행
     result = stub_analyze(req.url)
     
-    # 3. 크롤링 끝날 때까지 대기
+    # 3. 크롤링 결과 대기
     page_data = await crawl_task
     
     site_text_for_ai = ""
@@ -94,31 +105,36 @@ async def analyze_url(req: AnalyzeRequest):
         result["one_line"] = f"사이트 접속 실패: {page_data['error']}"
         result["screenshot"] = {"type": "none", "value": ""}
     else:
-        print("✅ 크롤링 성공! 스크린샷 확보 완료.")
+        print("✅ 크롤링 성공! 데이터 확보 완료.")
         result["screenshot"] = {"type": "base64", "value": page_data["screenshot_base64"]}
         site_text_for_ai = page_data["text"]
 
-    # 4. PyTorch AI 텍스트 모델 추론 (Non-Blocking으로 실행!)
+    # 4. 🧠 PyTorch AI 모델 텍스트 추론 (메모리에 로드된 모델 활용)
     if not page_data["error"] and site_text_for_ai.strip():
-        print("🧠 PyTorch AI 모델 텍스트 추론 중...")
-        ai_result = await asyncio.to_thread(analyze_text_with_ai, site_text_for_ai)
+        print("🧠 PhishGuard-BERT 모델 추론 중...")
         
+        # 모델 추론은 무거운 작업이므로 asyncio.to_thread를 사용하여 이벤트 루프를 방해하지 않습니다.
+        # ai_analyzer.analyze_text는 PhishGuardAnalyzer 클래스 내부의 메서드라고 가정합니다.
+        ai_result = await asyncio.to_thread(ai_analyzer.analyze, site_text_for_ai)
+        
+        # 더 높은 위험 점수가 나오면 업데이트
         if ai_result["risk_score"] > result["risk_score"]:
             result["risk_score"] = ai_result["risk_score"]
             result["label"] = ai_result["label"]
-            result["one_line"] = "AI 분석 결과, 위험 요소가 감지되었습니다!"
+            result["one_line"] = "AI 정밀 분석 결과, 위험 요소가 감지되었습니다!"
         
         result["evidence"]["model"] = {
             "name": "PhishGuard-BERT", 
-            "version": "v0.1-mock", 
+            "version": "v0.1-stable", 
             "score": ai_result["risk_score"]
         }
 
-    # 5. Gemini API 리포트 생성 (위험할 때만!)
+    # 5. 🤖 Gemini API 리포트 생성 (위험도가 중간 이상일 때만 호출)
     if result["risk_score"] >= 40:
-        print("🤖 위험 감지됨! Gemini AI 상세 리포트 생성 중...")
+        print("🤖 상세 분석 대상 선정! Gemini AI 리포트 생성 중...")
         img_data = result["screenshot"]["value"] if result["screenshot"]["type"] == "base64" else ""
         
+        # Gemini 분석 호출 (비동기)
         gemini_report = await generate_security_report(
             url=req.url, 
             risk_score=result["risk_score"], 
@@ -126,9 +142,11 @@ async def analyze_url(req: AnalyzeRequest):
             screenshot_base64=img_data
         )
     else:
-        gemini_report = "위험 요소가 발견되지 않아 상세 리포트를 생략합니다. 개인정보 입력 시에만 주의해 주세요."
+        gemini_report = "정밀 분석 결과 특이사항이 발견되지 않았습니다. 개인정보 보호 수칙을 준수해 주세요."
     
+    # 최종 결과 조립
     result["gemini_report"] = gemini_report
     result["latency_ms"] = int((time.time() - start) * 1000)
     
+    print(f"✨ [분석 완료] Score: {result['risk_score']} / Latency: {result['latency_ms']}ms")
     return result
