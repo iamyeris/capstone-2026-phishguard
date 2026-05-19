@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishGuard 실시간 테스트</title>
+    <style>
+        body { font-family: 'Pretendard', sans-serif; background-color: #f4f7f6; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input { width: 70%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #screenshot { max-width: 100%; border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; display: none; }
+        .score { font-size: 24px; font-weight: bold; color: #dc3545; }
+        .badge { padding: 5px 10px; background: #ffeeba; border-radius: 20px; font-size: 14px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🛡️ PhishGuard API 실시간 테스트</h2>
+        <input type="text" id="urlInput" value="https://naver.com" placeholder="분석할 URL 입력 (예: https://naver.com)">
+        <button onclick="startAnalysis()">분석 시작</button>
+        <p id="statusText" style="color: gray;">대기 중...</p>
+    </div>
+
+    <div class="card" id="resultCard" style="display: none;">
+        <h3>📊 분석 결과 <span id="stepBadge" class="badge"></span></h3>
+        <p>위험도 점수: <span id="riskScore" class="score">-</span> 점</p>
+        <p><b>한줄 요약:</b> <span id="oneLine">-</span></p>
+        
+        <hr>
+        
+        <h4>🤖 Gemini AI 심층 리포트</h4>
+        <p id="geminiReport" style="line-height: 1.6; color: #333;">(분석 중...)</p>
+
+        <h4>📸 실시간 캡처 화면</h4>
+        <img id="screenshot" src="" alt="사이트 캡처 화면">
+    </div>
+
+    <script>
+        async function startAnalysis() {
+            const url = document.getElementById("urlInput").value;
+            const statusText = document.getElementById("statusText");
+            const resultCard = document.getElementById("resultCard");
+            const stepBadge = document.getElementById("stepBadge");
+            const riskScore = document.getElementById("riskScore");
+            const oneLine = document.getElementById("oneLine");
+            const geminiReport = document.getElementById("geminiReport");
+            const screenshot = document.getElementById("screenshot");
+            
+            // 1. 화면 초기화 (로딩 상태)
+            resultCard.style.display = "block";
+            statusText.innerText = "🔍 서버에서 파이프라인 분석 중입니다... (대시보드 확인!)";
+            statusText.style.color = "blue";
+            stepBadge.innerText = "분석 진행 중";
+            stepBadge.style.background = "#ffeeba";
+            riskScore.innerText = "-";
+            oneLine.innerText = "-";
+            geminiReport.innerText = "웹페이지 렌더링 및 심층 분석 중 (대시보드의 진행 상황을 보세요)...";
+            screenshot.style.display = "none";
+            screenshot.src = "";
+
+            try {
+                // 2. 백엔드로 POST 요청 보내기 (이제 스트리밍이 아니라 단일 응답을 기다립니다)
+                const response = await fetch('http://localhost:8000/analyze/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, user_id: "test" })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`서버 에러 발생! 상태 코드: ${response.status}`);
+                }
+
+                // 3. 백엔드가 분석을 마치고 던져준 JSON 결과를 한 번에 받습니다.
+                const data = await response.json();
+                
+                // 4. 화면에 예쁘게 결과 뿌려주기
+                statusText.innerText = "✨ 모든 파이프라인 처리가 완료되었습니다!";
+                statusText.style.color = "green";
+                
+                stepBadge.innerText = "최종 완료";
+                stepBadge.style.background = "#c3e6cb";
+                
+                riskScore.innerText = data.risk_score;
+                // 위험도에 따라 글씨 색상 바꾸기
+                riskScore.style.color = data.risk_score >= 50 ? "#dc3545" : "#28a745";
+                
+                oneLine.innerText = data.one_line;
+                
+                // 제미나이 리포트 출력
+                if(data.gemini_report) {
+                    geminiReport.innerText = data.gemini_report;
+                }
+                
+                // Base64 이미지를 실제 <img> 태그로 변환하여 렌더링
+                if (data.screenshot && data.screenshot.type === "base64" && data.screenshot.value !== "") {
+                    screenshot.src = "data:image/png;base64," + data.screenshot.value;
+                    screenshot.style.display = "block";
+                }
+
+            } catch (error) {
+                statusText.innerText = "❌ 에러 발생: " + error.message;
+                statusText.style.color = "red";
+                console.error("에러 디버깅:", error);
+            }
+        }
+    </script>
+</body>
+</html>

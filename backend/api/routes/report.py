@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from schemas.payload import ReportRequest # schemas/payload.py 에 추가해야 함
+from schemas.payload import ReportRequest
 from models.database import get_db, Report
 
 router = APIRouter()

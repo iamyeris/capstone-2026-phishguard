@@ -1,14 +1,35 @@
 version: "3.8"
 
 services:
+  # 1. FastAPI 백엔드 서버
   api:
     build: .
     container_name: phishguard_api
     ports:
       - "8000:8000"
     env_file:
-      - .env  # 👈 로컬에 있는 .env 파일의 API 키를 도커 안으로 쏙 넣어줍니다.
+      - .env  # Gemini API 키 등이 들어있는 환경변수 파일
+    environment:
+      # 로컬이 아닌 도커 내부의 Redis 컨테이너를 바라보도록 설정
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
-      - .:/app  # 👈 로컬 코드를 컨테이너에 연결해서, 코드를 수정하면 도커를 안 꺼도 바로 반영됩니다 (핫 리로드)
+      # 로컬 코드를 컨테이너에 연결 (핫 리로드)
+      - .:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    
+    depends_on:
+      - redis # Redis가 먼저 켜진 후에 API 서버가 켜지도록 순서 보장
+
+  # 2. Redis 인메모리 데이터베이스 (새로 추가됨!)
+  redis:
+    image: redis:alpine # 가벼운 알파인 리눅스 기반 Redis 이미지 사용
+    container_name: phishguard_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      # 컨테이너가 꺼져도 캐시나 블랙리스트 데이터가 날아가지 않도록 로컬에 저장
+      - redis_data:/data
+
+# 도커 내부에서 사용할 가상 볼륨 정의
+volumes:
+  redis_data:

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishGuard 관리자 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-10">
+
+    <div class="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-md">
+        <h1 class="text-3xl font-bold text-blue-600 mb-2">🛡️ PhishGuard Admin</h1>
+        <p class="text-gray-500 mb-8">화이트리스트(안전 도메인)를 실시간으로 관리합니다. 변경 사항은 서버 재시작 없이 즉시 반영됩니다.</p>
+
+        <!-- 도메인 추가 폼 -->
+        <div class="bg-blue-50 p-5 rounded-md mb-8 flex gap-4">
+            <input type="text" id="newDomain" placeholder="예: naver.com" class="flex-1 p-2 border rounded outline-none focus:ring-2 focus:ring-blue-400">
+            <input type="text" id="newDesc" placeholder="설명 (예: 네이버 포털)" class="flex-1 p-2 border rounded outline-none focus:ring-2 focus:ring-blue-400">
+            <button onclick="addDomain()" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition">추가하기</button>
+        </div>
+
+        <!-- 화이트리스트 테이블 -->
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-gray-200 text-gray-700">
+                    <th class="p-3 border-b">도메인 (Domain)</th>
+                    <th class="p-3 border-b">설명 (Description)</th>
+                    <th class="p-3 border-b">관리</th>
+                </tr>
+            </thead>
+            <tbody id="whitelistTable">
+                <!-- 자바스크립트로 데이터가 여기에 채워집니다 -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 페이지 로딩 시 데이터 불러오기
+        window.onload = loadWhitelist;
+
+        async function loadWhitelist() {
+            const res = await fetch('/admin/api/whitelist');
+            const data = await res.json();
+            const tbody = document.getElementById('whitelistTable');
+            tbody.innerHTML = '';
+
+            data.forEach(item => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-gray-50 border-b">
+                        <td class="p-3 font-medium text-gray-800">${item.domain}</td>
+                        <td class="p-3 text-gray-600">${item.description}</td>
+                        <td class="p-3">
+                            <button onclick="deleteDomain('${item.domain}')" class="text-red-500 hover:text-red-700 font-bold">삭제</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function addDomain() {
+            const domain = document.getElementById('newDomain').value.trim();
+            const desc = document.getElementById('newDesc').value.trim();
+            if(!domain) return alert("도메인을 입력하세요!");
+
+            const res = await fetch('/admin/api/whitelist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: domain, description: desc })
+            });
+
+            if(res.ok) {
+                document.getElementById('newDomain').value = '';
+                document.getElementById('newDesc').value = '';
+                loadWhitelist(); // 테이블 새로고침
+            } else {
+                alert("추가 실패! (이미 존재하는 도메인일 수 있습니다)");
+            }
+        }
+
+        async function deleteDomain(domain) {
+            if(!confirm(`정말 ${domain}을(를) 삭제하시겠습니까?`)) return;
+
+            const res = await fetch(`/admin/api/whitelist/${domain}`, { method: 'DELETE' });
+            if(res.ok) loadWhitelist();
+        }
+    </script>
+</body>
+</html>

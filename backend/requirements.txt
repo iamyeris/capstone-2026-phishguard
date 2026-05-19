@@ -1,10 +1,19 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.8.2
+sse-starlette>=0.10.3
+python-dotenv
+SQLAlchemy
+redis
+--find-links https://download.pytorch.org/whl/cpu
 torch
 torchvision
 transformers
-playwright
 google-generativeai
-python-dotenv
-SQLAlchemy
+python-whois
+
+# 🌐 웹 크롤링 관련
+playwright
+
+google-generativeai
+Pillow

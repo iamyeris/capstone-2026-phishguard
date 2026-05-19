@@ -24,20 +24,35 @@ async def fetch_page_info(url: str) -> dict:
         )
         page = await context.new_page()
 
-        try:
-            # 중요: 피싱 사이트 대기 시간을 최대 15초로 제한 (서버 마비 방지)
-            await page.goto(url, timeout=15000, wait_until="domcontentloaded")
+# 🌟 [추가된 위장술 1] "나는 봇이 아니라 진짜 사람 브라우저야!" 라고 속이는 스크립트 몰래 주입
+        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            # 1. 텍스트 추출 (나중에 BERT 모델이 분석할 재료)
+        try:
+            # 🌟 [수정된 대기 방식] 
+            # networkidle은 영원히 안 끝날 수 있으니, "load(기본적인 화면 로딩 완료)"까지만 기다림
+            await page.goto(url, timeout=15000, wait_until="load")
+            
+            # 🌟 [추가된 위장술 2] 봇 탐지를 피하기 위해 화면 로딩 후 넉넉하게 3초 대기 (애니메이션, 캡차 통과 등)
+            await page.wait_for_timeout(3000)
+
+            # 1. 텍스트 추출
             result["text"] = await page.inner_text("body")
 
-            # 2. 스크린샷 캡처 (AI 비전 모델이나 앱 UI에서 보여줄 용도)
-            # 이미지를 파일로 저장하지 않고 Base64 문자열로 변환해서 바로 넘김
+            # 2. 스크린샷 캡처
             screenshot_bytes = await page.screenshot(type="jpeg", quality=60)
             result["screenshot_base64"] = base64.b64encode(screenshot_bytes).decode("utf-8")
 
         except PlaywrightTimeoutError:
-            result["error"] = "접속 시간 초과: 사이트가 응답하지 않거나 접속이 차단되었습니다."
+            # 🌟 [수정 3] 만약 네이버처럼 무거운 사이트라서 15초가 넘어가버리면?
+            # 에러로 처리해서 앱을 터뜨리는 대신, "지금까지 그려진 화면이라도 찰칵!" 찍고 넘기도록 방어 코드 추가
+            print(f"⚠️ 페이지 로딩 타임아웃 (15초 초과). 강제 캡처를 시도합니다: {url}")
+            try:
+                result["text"] = await page.inner_text("body")
+                screenshot_bytes = await page.screenshot(type="jpeg", quality=60)
+                result["screenshot_base64"] = base64.b64encode(screenshot_bytes).decode("utf-8")
+            except Exception as inner_e:
+                result["error"] = f"타임아웃 후 강제 캡처 실패: {str(inner_e)}"
+                
         except Exception as e:
             result["error"] = f"접속 실패: {str(e)}"
         finally:
