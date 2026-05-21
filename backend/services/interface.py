@@ -24,7 +24,7 @@ class PhishGuardAnalyzer:
         # 2. 🟢 모델 파일 위치 동적 추적
         current_dir = os.path.dirname(os.path.abspath(__file__))  # backend/services
         backend_dir = os.path.dirname(current_dir)                # backend
-        self.model_path = os.path.join(backend_dir, "weights", "phishguard_final_model")
+        self.model_path = os.path.join(backend_dir, "weights", "phishguard_global_patched_model")
 
         # 3. 모델 로드 검증
         if os.path.exists(self.model_path):

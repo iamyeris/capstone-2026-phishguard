@@ -13,12 +13,14 @@
         #screenshot { max-width: 100%; border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; display: none; }
         .score { font-size: 24px; font-weight: bold; color: #dc3545; }
         .badge { padding: 5px 10px; background: #ffeeba; border-radius: 20px; font-size: 14px; font-weight: bold; }
+        .blinking { animation: blinker 1.5s linear infinite; color: #007bff; font-weight: bold; }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2>🛡️ PhishGuard API 실시간 테스트</h2>
+        <h2>🛡️ PhishGuard API 실시간 테스트 (폴링 버전)</h2>
         <input type="text" id="urlInput" value="https://naver.com" placeholder="분석할 URL 입력 (예: https://naver.com)">
         <button onclick="startAnalysis()">분석 시작</button>
         <p id="statusText" style="color: gray;">대기 중...</p>
@@ -28,6 +30,11 @@
         <h3>📊 분석 결과 <span id="stepBadge" class="badge"></span></h3>
         <p>위험도 점수: <span id="riskScore" class="score">-</span> 점</p>
         <p><b>한줄 요약:</b> <span id="oneLine">-</span></p>
+        
+        <div style="margin: 15px 0; padding: 10px; background: #fff5f5; border-radius: 6px; border: 1px dashed #feb2b2;">
+            <span style="font-size:13px; color:#e53e3e;">실제 공식 사이트가 아니거나 악성 피싱이 의심되나요?</span>
+            <button onclick="submitReportFromTestSite()" style="padding: 5px 10px; font-size:12px; background-color:#e53e3e; margin-left:10px;">🚨 피싱 제보하기</button>
+        </div>
         
         <hr>
         
@@ -39,6 +46,8 @@
     </div>
 
     <script>
+        let pollingInterval = null;
+
         async function startAnalysis() {
             const url = document.getElementById("urlInput").value;
             const statusText = document.getElementById("statusText");
@@ -49,61 +58,106 @@
             const geminiReport = document.getElementById("geminiReport");
             const screenshot = document.getElementById("screenshot");
             
-            // 1. 화면 초기화 (로딩 상태)
+            // 기존 폴링 초기화
+            if (pollingInterval) clearInterval(pollingInterval);
+            
             resultCard.style.display = "block";
-            statusText.innerText = "🔍 서버에서 파이프라인 분석 중입니다... (대시보드 확인!)";
+            statusText.innerText = "🔍 서버에 분석 요청 중...";
             statusText.style.color = "blue";
-            stepBadge.innerText = "분석 진행 중";
+            stepBadge.innerText = "요청 접수 중";
             stepBadge.style.background = "#ffeeba";
             riskScore.innerText = "-";
-            oneLine.innerText = "-";
-            geminiReport.innerText = "웹페이지 렌더링 및 심층 분석 중 (대시보드의 진행 상황을 보세요)...";
+            riskScore.style.color = "#dc3545";
+            oneLine.innerText = "대기 중...";
+            geminiReport.innerHTML = "<span class='blinking'>서버에서 분석을 진행 중입니다... (최대 10초 소요)</span>";
             screenshot.style.display = "none";
             screenshot.src = "";
 
             try {
-                // 2. 백엔드로 POST 요청 보내기 (이제 스트리밍이 아니라 단일 응답을 기다립니다)
-                const response = await fetch('http://localhost:8000/analyze/', {
+                // 1. POST 요청으로 task_id 발급받기
+                // ⚠️ 주의: 백엔드 라우터 경로에 맞게 엔드포인트 수정 필요 (예: /analyze, /api/analyze 등)
+                const BASE_URL = 'http://localhost:8000/analyze'; 
+                
+                const response = await fetch(BASE_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url, user_id: "test" })
+                    body: JSON.stringify({ url: url })
                 });
 
                 if (!response.ok) {
-                    throw new Error(`서버 에러 발생! 상태 코드: ${response.status}`);
+                    if (response.status === 404) throw new Error("404 에러! 엔드포인트 주소를 확인하세요 (끝에 슬래시 유무 등)");
+                    throw new Error(`서버 에러! 상태 코드: ${response.status}`);
                 }
 
-                // 3. 백엔드가 분석을 마치고 던져준 JSON 결과를 한 번에 받습니다.
-                const data = await response.json();
+                const initData = await response.json();
+                const taskId = initData.task_id;
                 
-                // 4. 화면에 예쁘게 결과 뿌려주기
-                statusText.innerText = "✨ 모든 파이프라인 처리가 완료되었습니다!";
-                statusText.style.color = "green";
-                
-                stepBadge.innerText = "최종 완료";
-                stepBadge.style.background = "#c3e6cb";
-                
-                riskScore.innerText = data.risk_score;
-                // 위험도에 따라 글씨 색상 바꾸기
-                riskScore.style.color = data.risk_score >= 50 ? "#dc3545" : "#28a745";
-                
-                oneLine.innerText = data.one_line;
-                
-                // 제미나이 리포트 출력
-                if(data.gemini_report) {
-                    geminiReport.innerText = data.gemini_report;
-                }
-                
-                // Base64 이미지를 실제 <img> 태그로 변환하여 렌더링
-                if (data.screenshot && data.screenshot.type === "base64" && data.screenshot.value !== "") {
-                    screenshot.src = "data:image/png;base64," + data.screenshot.value;
-                    screenshot.style.display = "block";
-                }
+                statusText.innerText = `⏳ 분석 진행 중 (Task ID: ${taskId.substring(0,8)}...)`;
+                stepBadge.innerText = "분석 중";
+
+                // 2. GET 요청으로 2초마다 폴링하기
+                pollingInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`${BASE_URL}/status/${taskId}`);
+                        if (!statusResponse.ok) throw new Error("상태 조회 실패");
+                        
+                        const data = await statusResponse.json();
+
+                        // 백그라운드 진행 상태 업데이트
+                        if (data.step === "processing") {
+                            riskScore.innerText = data.risk_score || "-";
+                        } 
+                        // 분석 완료!
+                        else if (data.step === "final") {
+                            clearInterval(pollingInterval);
+                            
+                            statusText.innerText = "✨ 파이프라인 처리가 완료되었습니다!";
+                            statusText.style.color = "green";
+                            stepBadge.innerText = "최종 완료";
+                            stepBadge.style.background = "#c3e6cb";
+                            
+                            riskScore.innerText = data.risk_score;
+                            riskScore.style.color = data.risk_score >= 50 ? "#dc3545" : "#28a745";
+                            oneLine.innerText = data.one_line;
+                            
+                            geminiReport.innerText = data.gemini_report || "상세 리포트 생성이 생략되었습니다.";
+                            
+                            if (data.screenshot && data.screenshot.type === "base64" && data.screenshot.value) {
+                                screenshot.src = "data:image/png;base64," + data.screenshot.value;
+                                screenshot.style.display = "block";
+                            }
+                        }
+                    } catch (pollError) {
+                        console.error("폴링 에러:", pollError);
+                    }
+                }, 2000); // 2초마다 실행
 
             } catch (error) {
                 statusText.innerText = "❌ 에러 발생: " + error.message;
                 statusText.style.color = "red";
-                console.error("에러 디버깅:", error);
+                stepBadge.innerText = "오류 발생";
+                stepBadge.style.background = "#f5c6cb";
+                geminiReport.innerText = "서버 통신 오류로 인해 결과를 불러올 수 없습니다.";
+            }
+        }
+
+        async function submitReportFromTestSite() {
+            const currentUrl = document.getElementById("urlInput").value;
+            if(!currentUrl) return;
+            try {
+                const response = await fetch('http://localhost:8000/analyze/report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: currentUrl, reason: "테스트 사이트 사용자 수동 신고" })
+                });
+
+                if (response.ok) {
+                    alert("🚨 [신고 완료] 관리자 모니터링 관제센터로 위협 요소를 성공적으로 전송했습니다!");
+                } else {
+                    alert("신고 접수 중 통신 실패가 일어났습니다.");
+                }
+            } catch (error) {
+                console.error("신고 실패:", error);
             }
         }
     </script>

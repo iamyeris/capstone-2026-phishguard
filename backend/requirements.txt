@@ -17,3 +17,6 @@ playwright
 
 google-generativeai
 Pillow
+pandas>=2.0.0
+scikit-learn>=1.3.0
+joblib>=1.3.2

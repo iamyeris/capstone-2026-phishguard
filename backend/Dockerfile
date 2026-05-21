@@ -26,4 +26,4 @@ RUN playwright install chromium
 
 # 7. FastAPI 서버 실행
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "*.db", "*.log"]

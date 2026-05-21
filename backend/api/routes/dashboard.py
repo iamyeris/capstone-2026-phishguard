@@ -71,7 +71,7 @@ async def get_dashboard():
                 box-shadow: 0 20px 50px rgba(0,0,0,0.3);
             }
 
-            /* 하단 라벨 (Read, Process, Activate) */
+            /* 하단 라벨 */
             .stage-label-container {
                 position: absolute; bottom: 15px; left: 0; width: 100%;
                 display: flex; justify-content: space-around;
@@ -86,7 +86,7 @@ async def get_dashboard():
             
             .node {
                 background: var(--node-idle);
-                min-width: 160px; padding: 20px; border-radius: 16px;
+                min-width: 140px; padding: 20px 15px; border-radius: 16px;
                 border: 1px solid rgba(255,255,255,0.1);
                 text-align: center; font-weight: 600; font-size: 14px;
                 transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -111,9 +111,67 @@ async def get_dashboard():
                 border-color: #34d399;
             }
 
-            /* 커넥터 화살표 */
-            .connector { color: #334155; font-size: 20px; transition: color 0.5s; }
-            .connector.highlight { color: var(--accent-blue); }
+            /* 🚀 커넥터 화살표 (두께를 줄이고 슬림하게 조정) */
+            .connector { 
+                color: #334155; 
+                font-size: 26px; 
+                -webkit-text-stroke: 1px #334155; 
+                transition: all 0.5s; 
+                z-index: 1;
+            }
+            .connector.highlight { 
+                color: var(--accent-blue); 
+                -webkit-text-stroke: 1px var(--accent-blue);
+                transform: scale(1.15); 
+                filter: drop-shadow(0 0 10px rgba(66, 133, 244, 0.7)); 
+            }
+
+            /* 🚀 Fast Path (완료 노드 정중앙에 정확히 꽂히도록 수치 미세조정) */
+            .bypass-track {
+                position: absolute;
+                top: 25px;       
+                left: 23%;       /* 캐시 노드 쪽 출발점 밸런스 조정 */
+                right: 7.5%;     /* 분석 완료 노드 정중앙에 꽂히도록 수정 */
+                height: 35px;    
+                border-top: 3px dashed #10b981;
+                border-left: 3px dashed #10b981;
+                border-right: 3px dashed #10b981;
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
+                border-bottom: none;
+                opacity: 0;
+                transition: opacity 0.5s ease-in-out;
+                pointer-events: none;
+                z-index: 3;
+            }
+            .bypass-track.active {
+                opacity: 1;
+            }
+            
+            /* 완료 노드 쪽 화살표 머리 (어긋나지 않게 위치 고정) */
+            .bypass-arrowhead {
+                position: absolute;
+                bottom: -16px;
+                right: -10px; 
+                color: #10b981;
+                font-size: 22px;
+                filter: drop-shadow(0 0 8px #10b981);
+            }
+            
+            /* Fast Path 텍스트 라벨 */
+            .bypass-text {
+                position: absolute;
+                top: -12px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--card-bg); 
+                padding: 0 15px;
+                color: #10b981;
+                font-size: 13px;
+                font-weight: 800;
+                letter-spacing: 1px;
+                text-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+            }
 
             /* --- Terminal Log --- */
             .terminal {
@@ -162,9 +220,14 @@ async def get_dashboard():
         </div>
 
         <div class="pipeline-container">
+            <div class="bypass-track" id="fast-path-arrow">
+                <span class="bypass-text">FAST PATH (Cache Hit / Whitelist)</span>
+                <i class="fa-solid fa-caret-down bypass-arrowhead"></i>
+            </div>
+
             <div class="stage-label-container">
                 <div class="stage-label">Read / Input</div>
-                <div class="stage-label" style="margin-left: 50px;">Transform / Process</div>
+                <div class="stage-label">Transform / Process</div>
                 <div class="stage-label">Sink / Activate</div>
             </div>
 
@@ -172,29 +235,35 @@ async def get_dashboard():
                 <div class="node" id="node-req"><i class="fa-solid fa-cloud-arrow-down"></i>요청 접수</div>
             </div>
             
-            <i class="fa-solid fa-chevron-right connector" id="arr-1"></i>
+            <i class="fa-solid fa-arrow-right connector" id="arr-1"></i>
 
             <div class="node-group">
                 <div class="node" id="node-cache"><i class="fa-solid fa-bolt-lightning"></i>캐시 검증</div>
             </div>
 
-            <i class="fa-solid fa-chevron-right connector" id="arr-2"></i>
+            <i class="fa-solid fa-arrow-right connector" id="arr-2"></i>
 
             <div class="node-group">
-                <div class="node" id="node-bert"><i class="fa-solid fa-brain"></i>BERT AI 추론</div>
-                <div class="node" id="node-crawl"><i class="fa-solid fa-spider"></i>격리 브라우저 캡처</div>
+                <div class="node" id="node-bert"><i class="fa-solid fa-brain"></i>AI 모델 추론</div>
+                <div class="node" id="node-crawl"><i class="fa-solid fa-spider"></i>격리 브라우저</div>
             </div>
 
-            <i class="fa-solid fa-chevron-right connector" id="arr-3"></i>
+            <i class="fa-solid fa-arrow-right connector" id="arr-3"></i>
 
             <div class="node-group">
-                <div class="node" id="node-db"><i class="fa-solid fa-database"></i>병합 및 영구 저장</div>
+                <div class="node" id="node-db"><i class="fa-solid fa-database"></i>병합 및 로그</div>
             </div>
 
-            <i class="fa-solid fa-chevron-right connector" id="arr-4"></i>
+            <i class="fa-solid fa-arrow-right connector" id="arr-4"></i>
 
             <div class="node-group">
-                <div class="node" id="node-gemini"><i class="fa-solid fa-robot"></i>Gemini 리포트</div>
+                <div class="node" id="node-gemini"><i class="fa-solid fa-robot"></i>통합 리포트</div>
+            </div>
+
+            <i class="fa-solid fa-arrow-right connector" id="arr-5"></i>
+
+            <div class="node-group">
+                <div class="node" id="node-complete"><i class="fa-solid fa-flag-checkered"></i>분석 완료</div>
             </div>
         </div>
 
@@ -224,14 +293,42 @@ async def get_dashboard():
                 const logBox = document.getElementById('log-box');
                 const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
                 
-                // 새로운 트랜잭션 수신 시 UI 초기화
+                // 🚀 [추가됨] 신고 데이터 수신 시 강렬한 시각적 알람 효과
+                if (data.step === "신고 DB") {
+                    logBox.innerHTML += `
+                        <div class="log-entry">
+                            <span class="log-ts">${now}</span>
+                            <span class="log-msg" style="color: #ef4444; font-weight: 800; text-shadow: 0 0 5px rgba(239,68,68,0.5);">[🚨 긴급 알람] ${data.msg}</span>
+                        </div>`;
+                    logBox.scrollTop = logBox.scrollHeight;
+                    
+                    const dbNode = document.getElementById('node-db');
+                    if(dbNode) {
+                        const originalBg = dbNode.style.background;
+                        dbNode.className = 'node active';
+                        dbNode.style.background = "#ef4444";
+                        dbNode.style.borderColor = "#f87171";
+                        dbNode.style.boxShadow = "0 0 40px rgba(239, 68, 68, 0.8)";
+                        
+                        // 3초 후 원래 상태로 복구
+                        setTimeout(() => { 
+                            dbNode.style.background = originalBg; 
+                            dbNode.style.borderColor = "";
+                            dbNode.style.boxShadow = "";
+                            dbNode.className = 'node';
+                        }, 3000);
+                    }
+                    return; // 💥 신고 로그는 여기서 처리 끝! (아래 일반 로직 스킵)
+                }
+
+                // --- 이하 일반 분석 파이프라인 애니메이션 ---
                 if (data.step === "1단계") {
                     document.querySelectorAll('.node').forEach(el => el.className = 'node');
-                    document.querySelectorAll('.connector').forEach(el => el.className = 'fa-solid fa-chevron-right connector');
+                    document.querySelectorAll('.connector').forEach(el => el.className = 'fa-solid fa-arrow-right connector');
+                    document.getElementById('fast-path-arrow').classList.remove('active'); 
                     logBox.innerHTML += `<div class="log-divider"></div>`;
                 }
 
-                // 로그 출력
                 logBox.innerHTML += `
                     <div class="log-entry">
                         <span class="log-ts">${now}</span>
@@ -239,7 +336,6 @@ async def get_dashboard():
                     </div>`;
                 logBox.scrollTop = logBox.scrollHeight;
 
-                // 노드 조명 및 화살표 하이라이트 제어
                 if (data.active_nodes) {
                     data.active_nodes.forEach(id => {
                         const node = document.getElementById(id);
@@ -252,12 +348,21 @@ async def get_dashboard():
                         const node = document.getElementById(id);
                         if(node) node.className = 'node done';
                         
-                        // 화살표 하이라이트 로직 (단순 구현)
                         if(id === 'node-req') document.getElementById('arr-1').classList.add('highlight');
-                        if(id === 'node-cache') document.getElementById('arr-2').classList.add('highlight');
+                        if(id === 'node-cache' && data.status !== "done") document.getElementById('arr-2').classList.add('highlight');
                         if(id === 'node-bert' || id === 'node-crawl') document.getElementById('arr-3').classList.add('highlight');
                         if(id === 'node-db') document.getElementById('arr-4').classList.add('highlight');
                     });
+                }
+
+                if (data.status === "done") {
+                    document.getElementById('node-complete').className = 'node done'; 
+                    
+                    if (data.done_nodes && !data.done_nodes.includes('node-gemini')) {
+                        document.getElementById('fast-path-arrow').classList.add('active');
+                    } else {
+                        document.getElementById('arr-5').classList.add('highlight');
+                    }
                 }
             };
 
@@ -271,7 +376,6 @@ async def get_dashboard():
     """
     return HTMLResponse(content=html_content)
 
-# 📡 2. 대시보드 화면용 웹소켓 수신 전용 터널 엔드포인트
 @router.websocket("/ws")
 async def dashboard_websocket_endpoint(websocket: WebSocket):
     await dashboard_manager.connect(websocket)
