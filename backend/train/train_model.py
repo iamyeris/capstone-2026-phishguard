@@ -8,7 +8,7 @@ from transformers import (
     TrainingArguments, 
     Trainer, 
     TrainerCallback,
-    EarlyStoppingCallback # 🚀 과적합 방지용 브레이크
+    EarlyStoppingCallback
 )
 
 # 1. 커스텀 데이터셋 클래스
@@ -42,14 +42,13 @@ class PhishGuardDataset(Dataset):
             'labels': torch.tensor(label, dtype=torch.long)
         }
 
-# 2. 📊 매 에포크 로그 수집 전용 콜백 (저장 방해 로직 제거)
+# 2. 📊 매 에포크 로그 수집 전용 콜백
 class PresentationLogCallback(TrainerCallback):
     def __init__(self, output_path="./data/presentation_logs.csv"):
         self.output_path = output_path
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
 
     def on_epoch_end(self, args, state, control, **kwargs):
-        """1 에포크가 끝날 때마다 작동하여 로그를 병합합니다."""
         raw_logs = state.log_history
         if not raw_logs: return
 
@@ -82,14 +81,21 @@ def main():
         device = "cpu"
     print(f"🚀 사용할 디바이스: {device}")
 
-    # 4. 전체 데이터 로드 및 분할
-    data_path = "./data/train_data.csv"
+    # =====================================================================
+    # 🚨 [수정 포인트 1] 4-Class 1:1:1:1 황금 밸런스 데이터 로드
+    # =====================================================================
+    data_path = "./data/balanced_4class_train.csv" 
     print(f"[{data_path}] 데이터를 불러옵니다...")
     if not os.path.exists(data_path):
-        print(f"❌ 에러: {data_path} 파일이 없습니다. prepare_data.py를 먼저 실행해 주세요.")
+        print(f"❌ 에러: {data_path} 파일이 없습니다. 먼저 밸런싱 스크립트를 실행해 주세요.")
         return
         
     df = pd.read_csv(data_path)
+    
+    # 데이터가 진짜 1:1:1:1인지 눈으로 확인하는 안심 코드
+    print("\n[현재 학습 데이터 라벨 분포 (1:1:1:1 확인)]")
+    print(df['label'].value_counts())
+    print("-" * 40)
     
     # 데이터 분할 (80% 학습, 20% 검증)
     train_df = df.sample(frac=0.8, random_state=42)
@@ -107,7 +113,6 @@ def main():
     print(f"[{model_name}] 모델과 토크나이저를 로드합니다...")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # 🚀 [핵심 변경] num_labels를 4로 변경! (다중 분류 선언)
     model = AutoModelForSequenceClassification.from_pretrained(
         model_name, 
         num_labels=4, 
@@ -121,20 +126,26 @@ def main():
     output_dir = "../weights/phishguard_final_model"
     training_args = TrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=5,                    # 🚀 65만 개는 5에포크면 충분!
-        per_device_train_batch_size=32,        # 🚀 M4 가속 활용 배치 사이즈 업그레이드
+        num_train_epochs=5,                    
+        
+        # =====================================================================
+        # 🚨 [수정 포인트 2] 뇌 초기화 적응을 위한 학습률(Learning Rate) 상향
+        # 기본값 5e-5에서 2e-4로 올려서 초반에 팍팍 배우게 만듭니다.
+        # =====================================================================
+        learning_rate=2e-4,                    
+
+        per_device_train_batch_size=32,        
         per_device_eval_batch_size=32,
-        warmup_steps=1000,
+        warmup_steps=500,                      # 데이터가 줄었으므로 웜업 스텝도 살짝 낮춤
         weight_decay=0.01,
         
-        # 🛡️ 99점 확신병 치료제
-        label_smoothing_factor=0.1,            # 1. 과도한 확신 방지
-        max_grad_norm=1.0,                     # 2. 학습 지진(폭발) 방지
+        label_smoothing_factor=0.1,            
+        max_grad_norm=1.0,                     
         
         logging_steps=100,
         eval_strategy="epoch",             
-        save_strategy="epoch",                 # Early Stopping을 위해 필수
-        load_best_model_at_end=True,           # 3. 최적기(eval_loss 최저점) 가중치로 자동 복원
+        save_strategy="epoch",                 
+        load_best_model_at_end=True,           
         metric_for_best_model="eval_loss",
         greater_is_better=False
     )
@@ -147,17 +158,21 @@ def main():
         eval_dataset=val_dataset,
         callbacks=[
             PresentationLogCallback(), 
-            EarlyStoppingCallback(early_stopping_patience=1) # 🚀 eval_loss 1번 튀면 바로 종료!
+            # =====================================================================
+            # 🚨 [수정 포인트 3] 조기 종료(Early Stopping) 임시 해제
+            # 첫 에포크에서 Eval Loss가 튀더라도 5에포크 끝까지 멱살 잡고 끌고 갑니다.
+            # =====================================================================
+            # EarlyStoppingCallback(early_stopping_patience=1) 
         ] 
     )
 
-    print("🚀 65만 개 4-Class 대용량 파인튜닝 학습을 시작합니다!")
+    print("🚀 4-Class 황금 밸런스 파인튜닝 학습을 시작합니다!")
     trainer.train()
 
-    # 8. 최종 결과물 강제 저장 (가장 똑똑한 순간의 뇌가 저장됨)
+    # 8. 최종 결과물 강제 저장
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
-    print(f"✅ 학습 완료! 4-Class 최적화 최종 가중치 모델을 [{output_dir}] 에 성공적으로 저장했습니다.")
+    print(f"✅ 학습 완료! 시력을 완전히 되찾은 4-Class 최적화 가중치를 [{output_dir}] 에 성공적으로 저장했습니다.")
 
 if __name__ == "__main__":
     main()
